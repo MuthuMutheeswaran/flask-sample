@@ -1,6 +1,7 @@
 # app.py
 from flask import Flask, jsonify
 import psycopg2
+import os
 from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
@@ -28,48 +29,58 @@ def get_db_connection():
         cursor_factory=RealDictCursor,
     )
     return conn
+def init_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
 
+    # Only id + total_rooms
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS rooms (
+            id SERIAL PRIMARY KEY,
+            total_rooms INT NOT NULL
+        );
+    """)
 
-@app.route("/api/room-count", methods=["GET"])
-def room_count():
-    """
-    hotel_config table la irukkura number_of_rooms column value read pannum.
-    Example: 4 -> JSON la return.
-    """
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
+    # Insert sample only if empty
+    cur.execute("SELECT COUNT(*) FROM rooms;")
+    count = cur.fetchone()[0]
 
-        # table la first row la irukkura number_of_rooms
-        cur.execute("SELECT number_of_rooms FROM hotel_config LIMIT 1;")
-        row = cur.fetchone()
+    if count == 0:
+        cur.execute(
+            "INSERT INTO rooms (total_rooms) VALUES (%s);",
+            (4,)   # 🔥 un “4 rooms” inga
+        )
 
-        cur.close()
-        conn.close()
+    conn.commit()
+    cur.close()
+    conn.close()
 
-        if not row:
-            # table empty na
-            return jsonify({
-                "success": False,
-                "message": "No row found in hotel_config table"
-            }), 404
+# Run init
+init_db()
 
-        # row['number_of_rooms'] la 4 irukkum
-        return jsonify({
-            "success": True,
-            "total_rooms": row["number_of_rooms"]
+@app.route("/")
+def home():
+    return "Flask + PostgreSQL running on Render ⚡"
+
+# ---------- API ----------
+@app.route("/api/rooms", methods=["GET"])
+def get_rooms():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, total_rooms FROM rooms;")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    data = []
+    for r in rows:
+        data.append({
+            "id": r[0],
+            "total_rooms": r[1]
         })
 
-    except Exception as e:
-        # error aana case
-        return jsonify({
-            "success": False,
-            "message": "Server error",
-            "error": str(e)
-        }), 500
-
+    return jsonify(data)
 
 if __name__ == "__main__":
-    # local la run panna:
-    # python app.py
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
