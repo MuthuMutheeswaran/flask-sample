@@ -1,17 +1,15 @@
-# app.py
 from flask import Flask, jsonify
 import psycopg2
 import os
-from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 
-# ---------- DB CONFIG (LOCAL POSTGRES) ----------
+# ---------- DB CONFIG (Render Postgres) ----------
 DB_CONFIG = {
-    "dbname": "flask_sample_9uxk",      # namba create pannadhu
-    "user": "flask_sample_9uxk_user",        # un postgres username (default: postgres)
-    "password": "aoRB8MKQgETZo8gMyB1U39xjplrpycCu",  # unga password vechchiko
-    "host": "dpg-d4gs8l95pdvs738r1h7g-a",
+    "dbname": "flask_sample_9uxk",
+    "user": "flask_sample_9uxk_user",
+    "password": "aoRB8MKQgETZo8gMyB1U39xjplrpycCu",
+    "host": "dpg-d4gs8l95pdvs738r1h7g-a",  # need naa later .render.com potruvom
     "port": 5432,
 }
 
@@ -19,6 +17,7 @@ DB_CONFIG = {
 def get_db_connection():
     """
     PostgreSQL connection return pannum.
+    Normal cursor use pannrom (dict cursor illa).
     """
     conn = psycopg2.connect(
         dbname=DB_CONFIG["dbname"],
@@ -26,41 +25,49 @@ def get_db_connection():
         password=DB_CONFIG["password"],
         host=DB_CONFIG["host"],
         port=DB_CONFIG["port"],
-        cursor_factory=RealDictCursor,
     )
     return conn
+
+
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # Only id + total_rooms
-    cur.execute("""
+    # Table: id + total_rooms (name illa 🔥)
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS rooms (
             id SERIAL PRIMARY KEY,
             total_rooms INT NOT NULL
         );
-    """)
+        """
+    )
 
-    # Insert sample only if empty
+    # Check already data irukka?
     cur.execute("SELECT COUNT(*) FROM rooms;")
-    count = cur.fetchone()[0]
+    row = cur.fetchone()   # tuple: (count,)
+    count = row[0]
 
+    # Empty na 1 row insert pannuvom
     if count == 0:
         cur.execute(
             "INSERT INTO rooms (total_rooms) VALUES (%s);",
-            (4,)   # 🔥 un “4 rooms” inga
+            (4,),   # 4 rooms da inge set pannirukken
         )
 
     conn.commit()
     cur.close()
     conn.close()
 
-# Run init
+
+# App start aagumbodhe DB init
 init_db()
+
 
 @app.route("/")
 def home():
     return "Flask + PostgreSQL running on Render ⚡"
+
 
 # ---------- API ----------
 @app.route("/api/rooms", methods=["GET"])
@@ -72,14 +79,18 @@ def get_rooms():
     cur.close()
     conn.close()
 
+    # rows => list of tuples → JSON build pannrom
     data = []
     for r in rows:
-        data.append({
-            "id": r[0],
-            "total_rooms": r[1]
-        })
+        data.append(
+            {
+                "id": r[0],
+                "total_rooms": r[1],
+            }
+        )
 
     return jsonify(data)
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
