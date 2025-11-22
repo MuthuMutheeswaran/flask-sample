@@ -1,68 +1,75 @@
-import os
-import psycopg2
+# app.py
 from flask import Flask, jsonify
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 
-# Render environment variable
-DATABASE_URL = os.environ.get("DATABASE_URL")
+# ---------- DB CONFIG (LOCAL POSTGRES) ----------
+DB_CONFIG = {
+    "dbname": "flask_sample_9uxk",      # namba create pannadhu
+    "user": "flask_sample_9uxk_user",        # un postgres username (default: postgres)
+    "password": "aoRB8MKQgETZo8gMyB1U39xjplrpycCu",  # unga password vechchiko
+    "host": "dpg-d4gs8l95pdvs738r1h7g-a",
+    "port": 5432,
+}
 
-def get_conn():
-    return psycopg2.connect(DATABASE_URL)
 
-# ---------- DB INIT ----------
-def init_db():
-    conn = get_conn()
-    cur = conn.cursor()
+def get_db_connection():
+    """
+    PostgreSQL connection return pannum.
+    """
+    conn = psycopg2.connect(
+        dbname=DB_CONFIG["dbname"],
+        user=DB_CONFIG["user"],
+        password=DB_CONFIG["password"],
+        host=DB_CONFIG["host"],
+        port=DB_CONFIG["port"],
+        cursor_factory=RealDictCursor,
+    )
+    return conn
 
-    # Only id + total_rooms
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS rooms (
-            id SERIAL PRIMARY KEY,
-            total_rooms INT NOT NULL
-        );
-    """)
 
-    # Insert sample only if empty
-    cur.execute("SELECT COUNT(*) FROM rooms;")
-    count = cur.fetchone()[0]
+@app.route("/api/room-count", methods=["GET"])
+def room_count():
+    """
+    hotel_config table la irukkura number_of_rooms column value read pannum.
+    Example: 4 -> JSON la return.
+    """
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
 
-    if count == 0:
-        cur.execute(
-            "INSERT INTO rooms (total_rooms) VALUES (%s);",
-            (4,)   # 🔥 un “4 rooms” inga
-        )
+        # table la first row la irukkura number_of_rooms
+        cur.execute("SELECT number_of_rooms FROM hotel_config LIMIT 1;")
+        row = cur.fetchone()
 
-    conn.commit()
-    cur.close()
-    conn.close()
+        cur.close()
+        conn.close()
 
-# Run init
-init_db()
+        if not row:
+            # table empty na
+            return jsonify({
+                "success": False,
+                "message": "No row found in hotel_config table"
+            }), 404
 
-@app.route("/")
-def home():
-    return "Flask + PostgreSQL running on Render ⚡"
-
-# ---------- API ----------
-@app.route("/api/rooms", methods=["GET"])
-def get_rooms():
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT id, total_rooms FROM rooms;")
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    data = []
-    for r in rows:
-        data.append({
-            "id": r[0],
-            "total_rooms": r[1]
+        # row['number_of_rooms'] la 4 irukkum
+        return jsonify({
+            "success": True,
+            "total_rooms": row["number_of_rooms"]
         })
 
-    return jsonify(data)
+    except Exception as e:
+        # error aana case
+        return jsonify({
+            "success": False,
+            "message": "Server error",
+            "error": str(e)
+        }), 500
+
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    # local la run panna:
+    # python app.py
+    app.run(host="0.0.0.0", port=5000, debug=True)
