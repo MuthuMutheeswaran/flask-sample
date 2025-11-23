@@ -13,6 +13,7 @@ DB_CONFIG = {
     "port": 5432,
 }
 
+MAX_ROOMS = 4  # total capacity
 
 def get_db_connection():
     """
@@ -47,7 +48,7 @@ def init_db():
     if count == 0:
         cur.execute(
             "INSERT INTO rooms (total_rooms) VALUES (%s);",
-            (4,)   # starting rooms = 4
+            (MAX_ROOMS,)   # starting rooms = MAX_ROOMS
         )
 
     conn.commit()
@@ -140,8 +141,10 @@ def book_room():
         "total_rooms": new_count
     })
 
+
+# ---------- API 4: out-room (increment 1) ----------
 @app.route("/api/out-room", methods=["GET"])
-def book_room():
+def out_room():   # <<< NAME CHANGED (UNIQUE)
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -157,10 +160,11 @@ def book_room():
     room_id = row[0]
     current = row[1]
 
-    if current >= 5:
+    # already full ah irundha increment panna koodadhu
+    if current >= MAX_ROOMS:
         cur.close()
         conn.close()
-        return jsonify({"success": False, "message": "No rooms available"}), 400
+        return jsonify({"success": False, "message": "All rooms are already free"}), 400
 
     new_count = current + 1
 
@@ -171,9 +175,10 @@ def book_room():
 
     return jsonify({
         "success": True,
-        "message": "Room booked successfully",
+        "message": "Room checked out successfully",
         "total_rooms": new_count
     })
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
