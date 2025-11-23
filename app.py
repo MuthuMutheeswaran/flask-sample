@@ -140,6 +140,40 @@ def book_room():
         "total_rooms": new_count
     })
 
+@app.route("/api/out-room", methods=["GET"])
+def book_room():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # read current count
+    cur.execute("SELECT id, total_rooms FROM rooms ORDER BY id LIMIT 1;")
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "No room data found"}), 404
+
+    room_id = row[0]
+    current = row[1]
+
+    if current <= 0:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "No rooms available"}), 400
+
+    new_count = current + 1
+
+    cur.execute("UPDATE rooms SET total_rooms = %s WHERE id = %s;", (new_count, room_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "message": "Room booked successfully",
+        "total_rooms": new_count
+    })
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
