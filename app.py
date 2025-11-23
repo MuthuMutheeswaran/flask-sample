@@ -157,7 +157,7 @@ def book_room():
     room_id = row[0]
     current = row[1]
 
-    if current <= 0:
+    if current >= 5:
         cur.close()
         conn.close()
         return jsonify({"success": False, "message": "No rooms available"}), 400
