@@ -105,7 +105,7 @@ def get_room_count():
 
 
 # ---------- API 3: book room (decrement 1) ----------
-@app.route("/api/book-room", methods=["POST"])
+@app.route("/api/book-room", methods=["GET"])
 def book_room():
     conn = get_db_connection()
     cur = conn.cursor()
