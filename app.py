@@ -97,26 +97,17 @@ def trip_plan():
 
     # ---------- PROMPT ----------
     prompt = (
-        "You are a professional travel planner. Create a detailed day-wise trip plan "
-        "that strictly respects the traveller's budget.\n\n"
-        f"Start location: {start_location}\n"
-        f"Destination: {travel_location}\n"
-        f"Number of days: {days}\n"
-        f"Total budget per person in INR: {budget}\n\n"
-        "Very important rules:\n"
-        "1) The plan MUST be realistically possible inside this budget (stay + local travel + entry tickets + basic food).\n"
-        "2) If the budget is low, choose simple hotels / homestays and free or low-cost places.\n"
-        "3) If the budget is higher, you can add better hotels or paid activities, but still keep it within the budget.\n"
-        "4) Prefer 1–3 key places per day, not too rushed.\n"
-        "5) Consider travel time between spots.\n\n"
-        "Output format should be PLAIN TEXT (no bullets, no Markdown). Use this structure exactly:\n"
-        f"Trip plan within ₹{int(budget)} per person\n"
-        "Day 1: ...\n"
-        "Day 2: ...\n"
-        f"Day {days}: ...\n"
-        "At the very end, ADD ONE LINE like this:\n"
-        "Estimated total spend per person: ₹XXXX (within the given budget).\n"
-        "Do not add any other extra lines after that.\n"
+        "You are a travel planner. Create a detailed day-wise trip plan.\n" +
+    "Start location: " + start_location + "\n" +
+    "Destination: " + travel_location + "\n" +
+    "Number of days: " + days + "\n" +
+    "Budget per person in INR: " + budget + "\n\n" +
+    "Output format should be plain text like:\n" +
+    "Trip summary line\n" +
+    "Day 1: ...\n" +
+    "Day 2: ...\n" +
+    "Day 3: ...\n" +
+    "Do NOT use Markdown or bullet symbols. Only plain text lines.\n"
     )
 
     payload = {
