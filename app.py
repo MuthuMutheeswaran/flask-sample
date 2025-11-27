@@ -96,27 +96,29 @@ def trip_plan():
         )
 
     # ---------- PROMPT ----------
-    prompt =(
-"You are an expert Indian travel planner. Create a realistic day-wise trip itinerary.\n\n" +
-"Start location: " + start_location + "\n" +
-"Destination: " + travel_location + "\n" +
-"Total Days: " + days + "\n" +
-"Budget per person (INR): " + budget + "\n\n" +
-"Rules:\n" +
-"1) Choose real and popular places only inside the destination region.\n" +
-"2) Add 2 or 3 best places per day with a short description and practical sequence.\n" +
-"3) Adjust style based on budget but do NOT show cost or amount values.\n" +
-"4) Keep plan realistic and not rushed.\n" +
-"5) Do NOT use bullets (-, •) or Markdown formatting (#, **).\n" +
-"6) Do NOT include costs, ticket prices, or spending summary.\n" +
-"7) Output must be plain text only.\n\n" +
-"Output format exactly like this:\n" +
-"Trip plan for " + travel_location + " (" + days + " days)\n" +
-"Day 1: Place 1, Place 2 (short description)\n" +
-"Day 2: Place 3, Place 4 (short description)\n" +
-"...\n" +
-"Day " + days + ": ...\n" +
-"Do not add any extra lines after this.")
+    prompt =    prompt = (
+        "You are an expert Indian travel planner. Create a realistic day-wise trip itinerary.\n\n"
+        f"Start location: {start_location}\n"
+        f"Destination: {travel_location}\n"
+        f"Total Days: {days}\n"
+        f"Budget per person (INR): {budget}\n\n"
+        "Rules:\n"
+        "1) Choose real and popular places only inside the destination region.\n"
+        "2) Add 2 or 3 best places per day with a short description and practical sequence.\n"
+        "3) Adjust style based on budget but do NOT show cost or amount values.\n"
+        "4) Keep plan realistic and not rushed.\n"
+        "5) Do NOT use bullets (-, •) or Markdown formatting (#, **).\n"
+        "6) Do NOT include costs, ticket prices, or spending summary.\n"
+        "7) Output must be plain text only.\n\n"
+        f"Output format exactly like this:\n"
+        f"Trip plan for {travel_location} ({days} days)\n"
+        "Day 1: Place 1, Place 2 (short description)\n"
+        "Day 2: Place 3, Place 4 (short description)\n"
+        "...\n"
+        f"Day {days}: ...\n"
+        "Do not add any extra lines after this."
+    )
+
     
     
     payload = {
