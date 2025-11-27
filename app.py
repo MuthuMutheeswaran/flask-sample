@@ -7,8 +7,9 @@ app = Flask(__name__)
 # Get Gemini API key from environment variable (Render → Environment tab)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-MODEL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+#MODEL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
+MODEL_URL = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
 
 
 @app.route("/", methods=["GET"])
