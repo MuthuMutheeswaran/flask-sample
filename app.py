@@ -18,25 +18,24 @@ def home():
     return Response("Trip Planner API is running ✅", mimetype="text/plain")
 
 
-@app.route("/trip-plan", methods=["GET"])
+@app.route("/trip-plan", methods=["GET", "POST"])
 def trip_plan():
-    # ---------- SAFETY MESSAGE IF CALLED WRONG WAY ----------
-    if not request.data and not request.form and not request.is_json:
-        txt = (
-            "This endpoint expects a POST request with: "
-            "mode, start_location, travel_location, days, budget."
-        )
-        return Response(txt, mimetype="text/plain")
-
-    # ---------- READ INPUT (JSON or form) ----------
+    # ---------- READ INPUT (JSON, form, or query params) ----------
     data = {}
 
     try:
         if request.is_json:
             data = request.get_json(silent=True) or {}
+        elif request.form:
+            data = request.form.to_dict()
+        elif request.args:
+            data = request.args.to_dict()
         else:
-            # form-encoded (Zoho invokeurl default)
-            data = request.form.to_dict() if request.form else {}
+            txt = (
+                "This endpoint expects: mode, start_location, travel_location, days, budget "
+                "via JSON body, form-data, or query parameters."
+            )
+            return Response(txt, mimetype="text/plain", status=400)
     except Exception as e:
         return Response(
             f"Error parsing request: {e}",
@@ -71,7 +70,6 @@ def trip_plan():
             status=400,
         )
 
-    # ---------- BASE SUMMARY (Gemini-independent) ----------
     if days <= 0:
         return Response(
             "Days must be greater than 0.",
@@ -79,6 +77,7 @@ def trip_plan():
             status=400,
         )
 
+    # ---------- BASE SUMMARY (Gemini-independent) ----------
     per_day_budget = int(round(budget / days))
     base_text = (
         f"Trip plan from {start_location} to {travel_location}\n\n"
@@ -95,9 +94,10 @@ def trip_plan():
             status=500,
         )
 
-    # ---------- PROMPT ----------
-    prompt =    prompt = (
-        "You are an expert Indian travel planner. Create a realistic day-wise trip itinerary.\n\n"
+    # ---------- PROMPT (with final approximate total) ----------
+    prompt = (
+        "You are an expert Indian travel planner. Create a realistic day-wise trip itinerary for a trip in India, "
+        "and give an approximate total spend at the end.\n\n"
         f"Start location: {start_location}\n"
         f"Destination: {travel_location}\n"
         f"Total Days: {days}\n"
@@ -105,22 +105,21 @@ def trip_plan():
         "Rules:\n"
         "1) Choose real and popular places only inside the destination region.\n"
         "2) Add 2 or 3 best places per day with a short description and practical sequence.\n"
-        "3) Adjust style based on budget but do NOT show cost or amount values.\n"
-        "4) Keep plan realistic and not rushed.\n"
-        "5) Do NOT use bullets (-, •) or Markdown formatting (#, **).\n"
-        "6) Do NOT include costs, ticket prices, or spending summary.\n"
-        "7) Output must be plain text only.\n\n"
-        f"Output format exactly like this:\n"
+        "3) Keep the plan realistic and not rushed.\n"
+        "4) Consider a normal Indian traveller: simple hotels or homestays for low budgets, better stays for higher budgets.\n"
+        "5) The approximate total spend you give must be less than or equal to the given budget.\n"
+        "6) You can only give ONE final total value, not a full price breakdown.\n"
+        "7) Output must be plain text only (no bullets, no Markdown symbols like -, •, #, **).\n\n"
+        "Output format exactly like this:\n"
         f"Trip plan for {travel_location} ({days} days)\n"
         "Day 1: Place 1, Place 2 (short description)\n"
         "Day 2: Place 3, Place 4 (short description)\n"
         "...\n"
         f"Day {days}: ...\n"
+        "Estimated total spend per person: ₹XXXX (approx, within the given budget).\n"
         "Do not add any extra lines after this."
     )
 
-    
-    
     payload = {
         "contents": [
             {
@@ -153,11 +152,17 @@ def trip_plan():
             status=500,
         )
 
+    # If Gemini returned an error instead of candidates, show it
+    if "candidates" not in resp_json:
+        return Response(
+            base_text + "\n[Gemini error response]\n" + str(resp_json),
+            mimetype="text/plain",
+            status=500,
+        )
+
     ai_text = ""
     try:
-        ai_text = (
-            resp_json["candidates"][0]["content"]["parts"][0].get("text", "")
-        )
+        ai_text = resp_json["candidates"][0]["content"]["parts"][0].get("text", "")
     except Exception as e:
         ai_text = f"[No valid AI text. Error: {e}]"
 
