@@ -18,7 +18,7 @@ def home():
     return Response("Trip Planner API is running ✅", mimetype="text/plain")
 
 
-@app.route("/trip-plan", methods=["POST"])
+@app.route("/trip-plan", methods=["GET"])
 def trip_plan():
     # ---------- SAFETY MESSAGE IF CALLED WRONG WAY ----------
     if not request.data and not request.form and not request.is_json:
