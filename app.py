@@ -1,185 +1,169 @@
-from flask import Flask, jsonify
-import psycopg2
+from flask import Flask, request, Response
 import os
+import requests
 
 app = Flask(__name__)
 
-# ---------- DB CONFIG (Render PostgreSQL) ----------
-DB_CONFIG = {
-    "dbname": "flask_sample_9uxk",
-    "user": "flask_sample_9uxk_user",
-    "password": "aoRB8MKQgETZo8gMyB1U39xjplrpycCu",
-    "host": "dpg-d4gs8l95pdvs738r1h7g-a",
-    "port": 5432,
-}
+# Get Gemini API key from environment variable (Render → Environment tab)
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-MAX_ROOMS = 4  # total capacity
-
-def get_db_connection():
-    """
-    PostgreSQL connection return pannum.
-    """
-    conn = psycopg2.connect(
-        dbname=DB_CONFIG["dbname"],
-        user=DB_CONFIG["user"],
-        password=DB_CONFIG["password"],
-        host=DB_CONFIG["host"],
-        port=DB_CONFIG["port"],
-    )
-    return conn
+MODEL_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    "gemini-1.5-flash:generateContent"
+)
 
 
-def init_db():
-    conn = get_db_connection()
-    cur = conn.cursor()
+@app.route("/", methods=["GET"])
+def home():
+    return Response("Trip Planner API is running ✅", mimetype="text/plain")
 
-    # Only id + total_rooms (NO name column)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS rooms (
-            id SERIAL PRIMARY KEY,
-            total_rooms INT NOT NULL
-        );
-    """)
 
-    # Insert sample only if empty
-    cur.execute("SELECT COUNT(*) FROM rooms;")
-    count = cur.fetchone()[0]
+@app.route("/trip-plan", methods=["POST"])
+def trip_plan():
+    # ---------- SAFETY MESSAGE IF CALLED WRONG WAY ----------
+    if not request.data and not request.form and not request.is_json:
+        txt = (
+            "This endpoint expects a POST request with: "
+            "mode, start_location, travel_location, days, budget."
+        )
+        return Response(txt, mimetype="text/plain")
 
-    if count == 0:
-        cur.execute(
-            "INSERT INTO rooms (total_rooms) VALUES (%s);",
-            (MAX_ROOMS,)   # starting rooms = MAX_ROOMS
+    # ---------- READ INPUT (JSON or form) ----------
+    data = {}
+
+    try:
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+        else:
+            # form-encoded (Zoho invokeurl default)
+            data = request.form.to_dict() if request.form else {}
+    except Exception as e:
+        return Response(
+            f"Error parsing request: {e}",
+            mimetype="text/plain",
+            status=400,
         )
 
-    conn.commit()
-    cur.close()
-    conn.close()
+    mode = str(data.get("mode", "")).strip()
+    start_location = str(data.get("start_location", "")).strip()
+    travel_location = str(data.get("travel_location", "")).strip()
 
+    # days & budget as numbers
+    try:
+        days = int(data.get("days", 0))
+    except Exception:
+        days = 0
 
-# Run init once at startup
-init_db()
+    try:
+        budget = float(data.get("budget", 0))
+    except Exception:
+        budget = 0
 
+    # ---------- MODE CHECK ----------
+    if mode != "TRIP_PLAN":
+        return Response("Unsupported mode", mimetype="text/plain", status=400)
 
-@app.route("/")
-def home():
-    return "Flask + PostgreSQL running on Render ⚡"
+    # ---------- BASIC VALIDATION ----------
+    if not start_location or not travel_location or not days or not budget:
+        return Response(
+            "Invalid input. start_location, travel_location, days, budget are required.",
+            mimetype="text/plain",
+            status=400,
+        )
 
+    # ---------- BASE SUMMARY (Gemini-independent) ----------
+    if days <= 0:
+        return Response(
+            "Days must be greater than 0.",
+            mimetype="text/plain",
+            status=400,
+        )
 
-# ---------- API 1: all rows ----------
-@app.route("/api/rooms", methods=["GET"])
-def get_rooms():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT id, total_rooms FROM rooms;")
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
+    per_day_budget = int(round(budget / days))
+    base_text = (
+        f"Trip plan from {start_location} to {travel_location}\n\n"
+        f"Days: {days}\n"
+        f"Budget per person: ₹{int(budget)}\n"
+        f"Approx budget per day (per person): ₹{per_day_budget}\n\n"
+    )
 
-    data = []
-    for r in rows:
-        data.append({
-            "id": r[0],
-            "total_rooms": r[1]
-        })
+    # ---------- API KEY CHECK ----------
+    if not GEMINI_API_KEY:
+        return Response(
+            base_text + "[Server error: GEMINI_API_KEY not configured.]",
+            mimetype="text/plain",
+            status=500,
+        )
 
-    return jsonify(data)
+    # ---------- PROMPT ----------
+    prompt = (
+        "You are a professional travel planner. Create a detailed day-wise trip plan "
+        "that strictly respects the traveller's budget.\n\n"
+        f"Start location: {start_location}\n"
+        f"Destination: {travel_location}\n"
+        f"Number of days: {days}\n"
+        f"Total budget per person in INR: {budget}\n\n"
+        "Very important rules:\n"
+        "1) The plan MUST be realistically possible inside this budget (stay + local travel + entry tickets + basic food).\n"
+        "2) If the budget is low, choose simple hotels / homestays and free or low-cost places.\n"
+        "3) If the budget is higher, you can add better hotels or paid activities, but still keep it within the budget.\n"
+        "4) Prefer 1–3 key places per day, not too rushed.\n"
+        "5) Consider travel time between spots.\n\n"
+        "Output format should be PLAIN TEXT (no bullets, no Markdown). Use this structure exactly:\n"
+        f"Trip plan within ₹{int(budget)} per person\n"
+        "Day 1: ...\n"
+        "Day 2: ...\n"
+        f"Day {days}: ...\n"
+        "At the very end, ADD ONE LINE like this:\n"
+        "Estimated total spend per person: ₹XXXX (within the given budget).\n"
+        "Do not add any other extra lines after that.\n"
+    )
 
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ]
+    }
 
-# ---------- API 2: current room count ----------
-@app.route("/api/room-count", methods=["GET"])
-def get_room_count():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    # single row nu assume panrom – first record
-    cur.execute("SELECT total_rooms FROM rooms ORDER BY id LIMIT 1;")
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
+    params = {"key": GEMINI_API_KEY}
 
-    if not row:
-        return jsonify({"success": False, "message": "No room data found"}), 404
+    # ---------- CALL GEMINI ----------
+    try:
+        r = requests.post(MODEL_URL, params=params, json=payload, timeout=30)
+    except Exception as e:
+        return Response(
+            base_text + f"[Error calling AI API: {e}]",
+            mimetype="text/plain",
+            status=500,
+        )
 
-    return jsonify({
-        "success": True,
-        "total_rooms": row[0]
-    })
+    # ---------- PARSE GEMINI RESPONSE ----------
+    try:
+        resp_json = r.json()
+    except Exception as e:
+        return Response(
+            base_text + f"[Error reading AI response: {e}]",
+            mimetype="text/plain",
+            status=500,
+        )
 
+    ai_text = ""
+    try:
+        ai_text = (
+            resp_json["candidates"][0]["content"]["parts"][0].get("text", "")
+        )
+    except Exception as e:
+        ai_text = f"[No valid AI text. Error: {e}]"
 
-# ---------- API 3: book room (decrement 1) ----------
-@app.route("/api/book-room", methods=["GET"])
-def book_room():
-    conn = get_db_connection()
-    cur = conn.cursor()
+    final_text = base_text + ai_text
 
-    # read current count
-    cur.execute("SELECT id, total_rooms FROM rooms ORDER BY id LIMIT 1;")
-    row = cur.fetchone()
-
-    if not row:
-        cur.close()
-        conn.close()
-        return jsonify({"success": False, "message": "No room data found"}), 404
-
-    room_id = row[0]
-    current = row[1]
-
-    if current <= 0:
-        cur.close()
-        conn.close()
-        return jsonify({"success": False, "message": "No rooms available"}), 400
-
-    new_count = current - 1
-
-    cur.execute("UPDATE rooms SET total_rooms = %s WHERE id = %s;", (new_count, room_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return jsonify({
-        "success": True,
-        "message": "Room booked successfully",
-        "total_rooms": new_count
-    })
-
-
-# ---------- API 4: out-room (increment 1) ----------
-@app.route("/api/out-room", methods=["GET"])
-def out_room():   # <<< NAME CHANGED (UNIQUE)
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    # read current count
-    cur.execute("SELECT id, total_rooms FROM rooms ORDER BY id LIMIT 1;")
-    row = cur.fetchone()
-
-    if not row:
-        cur.close()
-        conn.close()
-        return jsonify({"success": False, "message": "No room data found"}), 404
-
-    room_id = row[0]
-    current = row[1]
-
-    # already full ah irundha increment panna koodadhu
-    if current >= MAX_ROOMS:
-        cur.close()
-        conn.close()
-        return jsonify({"success": False, "message": "All rooms are already free"}), 400
-
-    new_count = current + 1
-
-    cur.execute("UPDATE rooms SET total_rooms = %s WHERE id = %s;", (new_count, room_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return jsonify({
-        "success": True,
-        "message": "Room checked out successfully",
-        "total_rooms": new_count
-    })
+    return Response(final_text, mimetype="text/plain")
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    # For local testing only
+    app.run(host="0.0.0.0", port=5000, debug=True)
