@@ -180,29 +180,26 @@ def trip_plan():
 
     # ---------- PROMPT (with final approximate total) ----------
     prompt = (
-        "You are an expert Indian travel planner. Create a realistic day-wise trip itinerary for a trip in India, "
-        "and give an approximate total spend at the end.\n\n"
-        f"Start location: {start_location}\n"
-        f"Destination: {travel_location}\n"
-        f"Total Days: {days}\n"
-        f"Budget per person (INR): {budget}\n\n"
-        "Rules:\n"
-        "1) Choose real and popular places only inside the destination region.\n"
-        "2) Add 2 or 3 best places per day with a short description and practical sequence.\n"
-        "3) Keep the plan realistic and not rushed.\n"
-        "4) Consider a normal Indian traveller: simple hotels or homestays for low budgets, better stays for higher budgets.\n"
-        "5) The approximate total spend you give must be less than or equal to the given budget.\n"
-        "6) You can only give ONE final total value, not a full price breakdown.\n"
-        "7) Output must be plain text only (no bullets, no Markdown symbols like -, •, #, **).\n\n"
-        "Output format exactly like this:\n"
-        f"Trip plan for {travel_location} ({days} days)\n"
-        "Day 1: Place 1, Place 2 (short description)\n"
-        "Day 2: Place 3, Place 4 (short description)\n"
-        "...\n"
-        f"Day {days}: ...\n"
-        "Estimated total spend per person: ₹XXXX (approx, within the given budget).\n"
-        "Do not add any extra lines after this."
-    )
+    "You are an expert Indian travel planner. Produce a day-wise list of 2 or 3 real and popular places for the given destination. "
+    "Do NOT include any descriptions, timings, travel instructions, or price/expense information. Do NOT output an estimated total spend.\n\n"
+    f"Start location: {start_location}\n"
+    f"Destination: {travel_location}\n"
+    f"Total Days: {days}\n"
+    f"Budget per person (INR): {budget}\n\n"
+    "Rules:\n"
+    "1) For each day give exactly 2 or 3 place names only (no extra text for each place).\n"
+    "2) Use real and popular places inside the destination region only.\n"
+    "3) Keep the plan realistic — sequence doesn't need explanation, just place names.\n"
+    "4) Output must be plain text only (no bullets, no Markdown symbols, no numbers other than day numbers).\n\n"
+    "Output format exactly like this:\n"
+    f"Trip plan for {travel_location} ({days} days)\n"
+    "Day 1: Place A, Place B, Place C\n"
+    "Day 2: Place D, Place E\n"
+    "...\n"
+    f"Day {days}: Place X, Place Y\n"
+    "Do not add any other lines, not even an estimated total spend."
+)
+
 
     payload = {
         "contents": [
