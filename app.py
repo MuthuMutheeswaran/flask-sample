@@ -203,26 +203,26 @@ def trip_plan():
     except Exception:
         days = 0
 
-    # --------- Budget support for both range string & numeric ---------
-raw_budget = data.get("budget", "").strip()
+        # --------- Budget support for both range string & numeric ---------
+    raw_budget = data.get("budget", "").strip()
 
-# "3000 - 6000" , "3000-6000" , "₹3000 – ₹6000" support
-if any(x in raw_budget for x in ["-", "–"]):
-    for ch in ["₹", ","]:
-        raw_budget = raw_budget.replace(ch, "")
+    # "3000 - 6000" , "3000-6000" , "₹3000 – ₹6000" support
+    if any(x in raw_budget for x in ["-", "–"]):
+        for ch in ["₹", ","]:
+            raw_budget = raw_budget.replace(ch, "")
 
-    parts = raw_budget.replace("–", "-").split("-")
-    try:
-        min_b = float(parts[0].strip())
-        max_b = float(parts[1].strip())
-        budget = (min_b + max_b) / 2  # midpoint
-    except:
-        budget = 0
-else:
-    try:
-        budget = float(raw_budget)
-    except:
-        budget = 0
+        parts = raw_budget.replace("–", "-").split("-")
+        try:
+            min_b = float(parts[0].strip())
+            max_b = float(parts[1].strip())
+            budget = (min_b + max_b) / 2  # midpoint
+        except:
+            budget = 0
+    else:
+        try:
+            budget = float(raw_budget)
+        except:
+            budget = 0
 
 
     # ---------- MODE CHECK ----------
