@@ -366,7 +366,7 @@ def trip_plan():
 
 # ===================== /get-trip-plan (Google Sheet) =====================
 
-@app.route("/get-trip-plan", methods=["POST"])
+@app.route("/get-trip-plan", methods=["GET"])
 def get_trip_plan_route():
     """
     Input (JSON or form):
