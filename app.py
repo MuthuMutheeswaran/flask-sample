@@ -27,7 +27,7 @@ MODELS_LIST_URL = "https://generativelanguage.googleapis.com/v1/models"
 # These will come from Render env vars
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")  # full JSON string
 GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID")                          # spreadsheet ID
-TRIPPLAN_SHEET_NAME = os.environ.get("TRIPPLAN_SHEET_NAME", "TripPlans")     # sheet/tab name
+TRIPPLAN_SHEET_NAME = os.environ.get("TRIPPLAN_SHEET_NAME", "TripPlans")    # sheet/tab name
 
 
 def get_gspread_client():
@@ -366,7 +366,7 @@ def trip_plan():
 
 # ===================== /get-trip-plan (Google Sheet) =====================
 
-@app.route("/get-trip-plan", methods=["GET"])
+@app.route("/get-trip-plan", methods=["GET", "POST"])
 def get_trip_plan_route():
     """
     Input (JSON or form):
