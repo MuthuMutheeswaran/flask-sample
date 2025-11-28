@@ -1,3 +1,5 @@
-flask
+Flask
 requests
+gspread
+google-auth
 gunicorn
