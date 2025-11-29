@@ -434,6 +434,164 @@ def get_trip_plan_route():
 
     return Response(plan_text, status=200, mimetype="text/plain")
 
+# ===================== /get-bookings (Bookings for My Packages) =====================
+
+@app.route("/get-bookings", methods=["GET", "POST"])
+def get_bookings_route():
+    """
+    Input (JSON or form):
+      - email
+
+    Output (JSON):
+    {
+        "bookings": [
+            {
+                "package": "...",
+                "booking_id": "...",
+                "place": "...",
+                "travel_date": "...",
+                "members": "...",
+                "timestamp": "..."
+            },
+            ...
+        ]
+    }
+
+    This matches the structure expected by the Zoho 'my_packages' handler.
+    """
+    try:
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+        elif request.form:
+            data = request.form.to_dict()
+        elif request.args:
+            data = request.args.to_dict()
+        else:
+            data = {}
+    except Exception as e:
+        return Response(
+            json.dumps({"error": f"Error parsing request body: {e}"}),
+            status=400,
+            mimetype="application/json",
+        )
+
+    email = (data.get("email") or "").strip()
+    if not email:
+        return Response(
+            json.dumps({"error": "Missing parameter: email"}),
+            status=400,
+            mimetype="application/json",
+        )
+
+    try:
+        bookings = get_bookings_for_email(email)
+    except Exception as e:
+        return Response(
+            json.dumps({"error": f"Error reading bookings: {e}"}),
+            status=500,
+            mimetype="application/json",
+        )
+
+    resp = {"bookings": bookings}
+    return Response(json.dumps(resp), status=200, mimetype="application/json")
+
+def get_bookings_for_email(email: str):
+    """
+    Read active bookings for the given email from the Bookings sheet.
+
+    Assumed column layout in 'BOOKINGS_SHEET_NAME' sheet:
+
+      A: Timestamp
+      B: Type              (e.g., booking)
+      C: Source            (featured/custom)
+      D: Package Title
+      E: Package Code
+      F: Name
+      G: Email
+      H: Phone
+      I: Travel Date
+      J: Members
+      K: Status            (Booked / Requested / Closed / etc.)
+      L: Booking ID
+      M: Start Location
+      N: Travel Location
+      ... (any extra columns are ignored)
+
+    Adjust column indexes below if your structure is different.
+    """
+    if not email:
+        return []
+
+    client = get_gspread_client()
+    sh = client.open_by_key(GOOGLE_SHEET_ID)
+    ws = sh.worksheet(BOOKINGS_SHEET_NAME)
+
+    rows = ws.get_all_values()
+    if len(rows) < 2:
+        return []
+
+    header = rows[0]
+    data_rows = rows[1:]
+
+    # zero-based indices
+    TS_COL           = 0   # A
+    TYPE_COL         = 1   # B
+    SRC_COL          = 2   # C
+    PKG_TITLE_COL    = 3   # D
+    PKG_CODE_COL     = 4   # E
+    NAME_COL         = 5   # F
+    EMAIL_COL        = 6   # G
+    PHONE_COL        = 7   # H
+    TRAVEL_DATE_COL  = 8   # I
+    MEMBERS_COL      = 9   # J
+    STATUS_COL       = 10  # K
+    BOOKING_ID_COL   = 11  # L
+    START_LOC_COL    = 12  # M
+    TRAVEL_LOC_COL   = 13  # N
+
+    email_norm = (email or "").strip().lower()
+    bookings = []
+
+    # read from latest to oldest
+    for r in reversed(data_rows):
+        # safety: skip short rows
+        if len(r) <= EMAIL_COL:
+            continue
+
+        row_email = str(r[EMAIL_COL] or "").strip().lower()
+        if row_email != email_norm:
+            continue
+
+        status = ""
+        if len(r) > STATUS_COL:
+            status = str(r[STATUS_COL] or "").strip().lower()
+
+        # skip closed/cancelled bookings
+        if status in ("closed", "cancelled", "canceled"):
+            continue
+
+        pkg_title   = r[PKG_TITLE_COL] if len(r) > PKG_TITLE_COL else ""
+        booking_id  = r[BOOKING_ID_COL] if len(r) > BOOKING_ID_COL else ""
+        travel_date = r[TRAVEL_DATE_COL] if len(r) > TRAVEL_DATE_COL else ""
+        members     = r[MEMBERS_COL] if len(r) > MEMBERS_COL else ""
+        ts          = r[TS_COL] if len(r) > TS_COL else ""
+        travel_loc  = r[TRAVEL_LOC_COL] if len(r) > TRAVEL_LOC_COL else ""
+        start_loc   = r[START_LOC_COL] if len(r) > START_LOC_COL else ""
+
+        # "Place" field for Zoho: prefer travel location; fallback to package title
+        place = travel_loc or pkg_title
+
+        bookings.append({
+            "package": pkg_title or "Your Package",
+            "booking_id": booking_id,
+            "place": place,
+            "travel_date": travel_date,
+            "members": members,
+            "timestamp": ts,
+        })
+
+    return bookings
+
 
 # ===================== MAIN =====================
 
