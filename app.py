@@ -667,21 +667,20 @@ def verify_otp_for_email(email: str, otp: str) -> bool:
     return True
 # ===================== /generate-otp =====================
 
-@app.route("/generate-otp", methods=["POST","GET"])
+@app.route("/generate-otp", methods=["GET", "POST"])
 def generate_otp_route():
     """
-    Input (JSON or form):
-      - email
-
-    Output (JSON):
-      { "status": "success", "otp": "123456" }
-      or { "status": "error", "message": "..." }
+    Input:
+      - POST: email in JSON or form
+      - GET : /generate-otp?email=...
     """
     try:
         if request.is_json:
             data = request.get_json(silent=True) or {}
         elif request.form:
             data = request.form.to_dict()
+        elif request.args:
+            data = request.args.to_dict()
         else:
             data = {}
     except Exception as e:
@@ -712,21 +711,20 @@ def generate_otp_route():
     return Response(json.dumps(resp), status=200, mimetype="application/json")
 # ===================== /verify-otp =====================
 
-@app.route("/verify-otp", methods=["POST","GET"])
+@app.route("/verify-otp", methods=["GET", "POST"])
 def verify_otp_route():
     """
-    Input (JSON or form):
-      - email
-      - otp
-
-    Output (JSON):
-      { "status": "success" }  or { "status": "failed" }
+    Input:
+      - POST: email, otp in JSON / form
+      - GET : /verify-otp?email=...&otp=...
     """
     try:
         if request.is_json:
             data = request.get_json(silent=True) or {}
         elif request.form:
             data = request.form.to_dict()
+        elif request.args:
+            data = request.args.to_dict()
         else:
             data = {}
     except Exception as e:
@@ -735,6 +733,7 @@ def verify_otp_route():
             status=400,
             mimetype="application/json",
         )
+
 
     email = (data.get("email") or "").strip()
     otp = (data.get("otp") or "").strip()
