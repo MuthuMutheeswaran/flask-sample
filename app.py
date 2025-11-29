@@ -499,11 +499,11 @@ def get_bookings_for_email(email: str):
     """
     Read active bookings for the given email from the Bookings sheet.
 
-    Assumed column layout in 'BOOKINGS_SHEET_NAME' sheet:
+    Expected columns in 'BOOKINGS_SHEET_NAME' sheet header row:
 
       A: Timestamp
-      B: Type              (e.g., booking)
-      C: Source            (featured/custom)
+      B: Booking ID
+      C: Source
       D: Package Title
       E: Package Code
       F: Name
@@ -511,20 +511,24 @@ def get_bookings_for_email(email: str):
       H: Phone
       I: Travel Date
       J: Members
-      K: Status            (Booked / Requested / Closed / etc.)
-      L: Booking ID
-      M: Start Location
-      N: Travel Location
-      ... (any extra columns are ignored)
-
-    Adjust column indexes below if your structure is different.
+      K: Amount Per Person
+      L: Total Amount
+      M: Status
+      N: Start Location
+      O: Travel Location
+      P: Days
+      Q: Budget Input
+      R: Distance Km
+      S: Travel Cost 20/km
+      T: Total Travel Allowance
+      U: Trip Plan
     """
     if not email:
         return []
 
     client = get_gspread_client()
     sh = client.open_by_key(GOOGLE_SHEET_ID)
-    ws = sh.worksheet("Bookings")
+    ws = sh.worksheet(BOOKINGS_SHEET_NAME)
 
     rows = ws.get_all_values()
     if len(rows) < 2:
@@ -533,28 +537,29 @@ def get_bookings_for_email(email: str):
     header = rows[0]
     data_rows = rows[1:]
 
-    # zero-based indices
-    TS_COL           = 0   # A
-    TYPE_COL         = 1   # B
-    SRC_COL          = 2   # C
-    PKG_TITLE_COL    = 3   # D
-    PKG_CODE_COL     = 4   # E
-    NAME_COL         = 5   # F
-    EMAIL_COL        = 6   # G
-    PHONE_COL        = 7   # H
-    TRAVEL_DATE_COL  = 8   # I
-    MEMBERS_COL      = 9   # J
-    STATUS_COL       = 10  # K
-    BOOKING_ID_COL   = 11  # L
-    START_LOC_COL    = 12  # M
-    TRAVEL_LOC_COL   = 13  # N
+    # find column indexes by header name (case-insensitive)
+    def find_col(name, default_index=None):
+        low = name.lower()
+        for idx, h in enumerate(header):
+            if str(h).strip().lower() == low:
+                return idx
+        return default_index
+
+    TS_COL          = find_col("Timestamp", 0)
+    EMAIL_COL       = find_col("Email", 6)
+    PKG_TITLE_COL   = find_col("Package Title", 3)
+    TRAVEL_DATE_COL = find_col("Travel Date", 8)
+    MEMBERS_COL     = find_col("Members", 9)
+    STATUS_COL      = find_col("Status", 12)
+    BOOKING_ID_COL  = find_col("Booking ID", 1)
+    TRAVEL_LOC_COL  = find_col("Travel Location", 14)
+    START_LOC_COL   = find_col("Start Location", 13)
 
     email_norm = (email or "").strip().lower()
     bookings = []
 
     # read from latest to oldest
     for r in reversed(data_rows):
-        # safety: skip short rows
         if len(r) <= EMAIL_COL:
             continue
 
@@ -566,7 +571,7 @@ def get_bookings_for_email(email: str):
         if len(r) > STATUS_COL:
             status = str(r[STATUS_COL] or "").strip().lower()
 
-        # skip closed/cancelled bookings
+        # skip closed / cancelled
         if status in ("closed", "cancelled", "canceled"):
             continue
 
@@ -578,12 +583,12 @@ def get_bookings_for_email(email: str):
         travel_loc  = r[TRAVEL_LOC_COL] if len(r) > TRAVEL_LOC_COL else ""
         start_loc   = r[START_LOC_COL] if len(r) > START_LOC_COL else ""
 
-        # "Place" field for Zoho: prefer travel location; fallback to package title
-        place = travel_loc or pkg_title
+        # "place" field for Zoho: prefer travel location; fallback to start; else package
+        place = travel_loc or start_loc or pkg_title
 
         bookings.append({
             "package": pkg_title or "Your Package",
-            "booking_id": booking_id,
+            "booking_id": booking_id,   # 👉 now correct: A2M-G-...
             "place": place,
             "travel_date": travel_date,
             "members": members,
@@ -591,6 +596,7 @@ def get_bookings_for_email(email: str):
         })
 
     return bookings
+
 
 
 # ===================== MAIN =====================
