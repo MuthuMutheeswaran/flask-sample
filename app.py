@@ -524,7 +524,7 @@ def get_bookings_for_email(email: str):
 
     client = get_gspread_client()
     sh = client.open_by_key(GOOGLE_SHEET_ID)
-    ws = sh.worksheet(BOOKINGS_SHEET_NAME)
+    ws = sh.worksheet("Bookings")
 
     rows = ws.get_all_values()
     if len(rows) < 2:
