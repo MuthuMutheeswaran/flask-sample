@@ -667,7 +667,7 @@ def verify_otp_for_email(email: str, otp: str) -> bool:
     return True
 # ===================== /generate-otp =====================
 
-@app.route("/generate-otp", methods=["POST"])
+@app.route("/generate-otp", methods=["POST","GET"])
 def generate_otp_route():
     """
     Input (JSON or form):
@@ -712,7 +712,7 @@ def generate_otp_route():
     return Response(json.dumps(resp), status=200, mimetype="application/json")
 # ===================== /verify-otp =====================
 
-@app.route("/verify-otp", methods=["POST"])
+@app.route("/verify-otp", methods=["POST","GET"])
 def verify_otp_route():
     """
     Input (JSON or form):
