@@ -3,11 +3,16 @@ import os
 import requests
 import time
 import json
+import random 
 
 import gspread
 from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
+OTP_TTL_SECONDS = 5 * 60  # 5 minutes
+
+# In-memory store: { email_lower: { "otp": "123456", "expires_at": 1234567890 } }
+otp_store = {}
 
 # ===================== GEMINI CONFIG =====================
 
@@ -597,6 +602,158 @@ def get_bookings_for_email(email: str):
 
     return bookings
 
+# ===================== OTP HELPERS =====================
+
+def _cleanup_expired_otps():
+    """Remove expired OTP entries from otp_store."""
+    now = int(time.time())
+    expired_keys = []
+    for email_key, info in otp_store.items():
+        if info.get("expires_at", 0) < now:
+            expired_keys.append(email_key)
+    for k in expired_keys:
+        otp_store.pop(k, None)
+
+
+def _generate_otp_code(length: int = 6) -> str:
+    """Generate numeric OTP of given length (default 6 digits)."""
+    # 6-digit numeric OTP: 100000–999999
+    start = 10 ** (length - 1)
+    end = (10 ** length) - 1
+    return str(random.randint(start, end))
+
+
+def set_otp_for_email(email: str) -> str:
+    """Generate & store OTP for email, return OTP string."""
+    email_key = (email or "").strip().lower()
+    if not email_key:
+        raise ValueError("Email is required for OTP")
+
+    _cleanup_expired_otps()
+
+    otp = _generate_otp_code(6)
+    expires_at = int(time.time()) + OTP_TTL_SECONDS
+
+    otp_store[email_key] = {
+        "otp": otp,
+        "expires_at": expires_at,
+    }
+    return otp
+
+
+def verify_otp_for_email(email: str, otp: str) -> bool:
+    """Check if OTP matches & not expired. If ok, remove it (one-time use)."""
+    email_key = (email or "").strip().lower()
+    otp = (otp or "").strip()
+
+    if not email_key or not otp:
+        return False
+
+    _cleanup_expired_otps()
+
+    info = otp_store.get(email_key)
+    if not info:
+        return False
+
+    if info.get("otp") != otp:
+        return False
+
+    if info.get("expires_at", 0) < int(time.time()):
+        otp_store.pop(email_key, None)
+        return False
+
+    # OTP valid → one-time use: delete entry
+    otp_store.pop(email_key, None)
+    return True
+# ===================== /generate-otp =====================
+
+@app.route("/generate-otp", methods=["POST"])
+def generate_otp_route():
+    """
+    Input (JSON or form):
+      - email
+
+    Output (JSON):
+      { "status": "success", "otp": "123456" }
+      or { "status": "error", "message": "..." }
+    """
+    try:
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+        elif request.form:
+            data = request.form.to_dict()
+        else:
+            data = {}
+    except Exception as e:
+        return Response(
+            json.dumps({"status": "error", "message": f"Error parsing request body: {e}"}),
+            status=400,
+            mimetype="application/json",
+        )
+
+    email = (data.get("email") or "").strip()
+    if not email:
+        return Response(
+            json.dumps({"status": "error", "message": "Missing parameter: email"}),
+            status=400,
+            mimetype="application/json",
+        )
+
+    try:
+        otp = set_otp_for_email(email)
+    except Exception as e:
+        return Response(
+            json.dumps({"status": "error", "message": f"Could not generate OTP: {e}"}),
+            status=500,
+            mimetype="application/json",
+        )
+
+    resp = {"status": "success", "otp": otp}
+    return Response(json.dumps(resp), status=200, mimetype="application/json")
+# ===================== /verify-otp =====================
+
+@app.route("/verify-otp", methods=["POST"])
+def verify_otp_route():
+    """
+    Input (JSON or form):
+      - email
+      - otp
+
+    Output (JSON):
+      { "status": "success" }  or { "status": "failed" }
+    """
+    try:
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+        elif request.form:
+            data = request.form.to_dict()
+        else:
+            data = {}
+    except Exception as e:
+        return Response(
+            json.dumps({"status": "error", "message": f"Error parsing request body: {e}"}),
+            status=400,
+            mimetype="application/json",
+        )
+
+    email = (data.get("email") or "").strip()
+    otp = (data.get("otp") or "").strip()
+
+    if not email or not otp:
+        return Response(
+            json.dumps({"status": "error", "message": "Missing parameters: email and/or otp"}),
+            status=400,
+            mimetype="application/json",
+        )
+
+    ok = verify_otp_for_email(email, otp)
+
+    if ok:
+        resp = {"status": "success"}
+    else:
+        resp = {"status": "failed"}
+
+    return Response(json.dumps(resp), status=200, mimetype="application/json")
 
 
 # ===================== MAIN =====================
