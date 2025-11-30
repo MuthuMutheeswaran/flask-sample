@@ -1125,6 +1125,29 @@ def featured_packages_route():
     ]
 
     return Response(json.dumps(packages), status=200, mimetype="application/json")
+@app.route("/dummy", methods=["GET", "POST"])
+def dummy_api():
+    data = {}
+
+    try:
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+        elif request.form:
+            data = request.form.to_dict()
+        elif request.args:
+            data = request.args.to_dict()
+    except:
+        pass
+
+    return Response(
+        json.dumps({
+            "status": "success",
+            "message": "Dummy API called successfully!",
+            "received": data
+        }),
+        mimetype="application/json",
+        status=200
+    )
 
 # ===================== MAIN =====================
 
