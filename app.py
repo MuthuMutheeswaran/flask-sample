@@ -39,16 +39,18 @@ TRIPPLAN_SHEET_NAME = os.environ.get("TRIPPLAN_SHEET_NAME", "TripPlans")    # sh
 def get_gspread_client():
     """
     Create a gspread client using service account JSON from env.
-    This is called only when /get-trip-plan is used.
+    Used for both read & write operations.
     """
     if not GOOGLE_SERVICE_ACCOUNT_JSON or not GOOGLE_SHEET_ID:
         raise RuntimeError("Google Sheets not configured (GOOGLE_SERVICE_ACCOUNT_JSON / GOOGLE_SHEET_ID missing).")
 
     sa_info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
-    scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+    # read + write scope
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     creds = Credentials.from_service_account_info(sa_info, scopes=scopes)
     client = gspread.authorize(creds)
     return client
+
 
 
 def find_trip_plan(start, travel, days, budget):
@@ -754,6 +756,127 @@ def verify_otp_route():
         resp = {"status": "failed"}
 
     return Response(json.dumps(resp), status=200, mimetype="application/json")
+def close_booking_in_sheets(booking_id: str) -> (bool, str):
+    """
+    Move booking row from 'Bookings' sheet to 'ClosedBookings' sheet
+    and delete it from 'Bookings'.
+
+    Returns (success_flag, message)
+    """
+    booking_id = (booking_id or "").strip()
+    if not booking_id:
+        return False, "Booking ID required"
+
+    client = get_gspread_client()
+    sh = client.open_by_key(GOOGLE_SHEET_ID)
+
+    # main bookings sheet
+    try:
+        booking_ws = sh.worksheet("Bookings")
+    except Exception:
+        return False, "Bookings sheet not found"
+
+    # all rows
+    rows = booking_ws.get_all_values()
+    if len(rows) < 2:
+        return False, "No bookings found"
+
+    header = rows[0]
+    data_rows = rows[1:]
+
+    # find 'Booking ID' column (case-insensitive)
+    bid_col = None
+    for idx, h in enumerate(header):
+        if str(h).strip().lower() == "booking id":
+            bid_col = idx
+            break
+
+    if bid_col is None:
+        return False, "Booking ID column not found"
+
+    # ClosedBookings sheet – create if not exists
+    try:
+        closed_ws = sh.worksheet("ClosedBookings")
+    except Exception:
+        closed_ws = sh.add_worksheet(title="ClosedBookings", rows="1000", cols=str(len(header)))
+        closed_ws.append_row(header)
+
+    # search row
+    target_row_index = None   # 1-based row number in sheet
+    target_row_values = None
+
+    for i, r in enumerate(data_rows):
+        val = ""
+        if len(r) > bid_col:
+            val = str(r[bid_col] or "").strip()
+        if val == booking_id:
+            target_row_index = i + 2  # +1 for 1-based, +1 for header -> +2
+            target_row_values = r
+            break
+
+    if target_row_index is None or target_row_values is None:
+        return False, f"Booking not found: {booking_id}"
+
+    # append to ClosedBookings and delete from Bookings
+    try:
+        closed_ws.append_row(target_row_values)
+        booking_ws.delete_rows(target_row_index)
+    except Exception as e:
+        return False, f"Error while moving booking: {e}"
+
+    return True, f"Booking closed and moved: {booking_id}"
+@app.route("/close-booking", methods=["GET", "POST"])
+def close_booking_route():
+    """
+    Close single booking and move it to ClosedBookings sheet.
+
+    Input (JSON, form or query):
+      - booking_id
+
+    Output (JSON):
+    {
+      "status": "success" | "error",
+      "message": "..."
+    }
+    """
+    # ---- read input ----
+    try:
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+        elif request.form:
+            data = request.form.to_dict()
+        elif request.args:
+            data = request.args.to_dict()
+        else:
+            data = {}
+    except Exception as e:
+        return Response(
+            json.dumps({"status": "error", "message": f"Error parsing request body: {e}"}),
+            status=400,
+            mimetype="application/json",
+        )
+
+    booking_id = (data.get("booking_id") or "").strip()
+
+    if not booking_id:
+        return Response(
+            json.dumps({"status": "error", "message": "Missing parameter: booking_id"}),
+            status=400,
+            mimetype="application/json",
+        )
+
+    try:
+        ok, msg = close_booking_in_sheets(booking_id)
+    except Exception as e:
+        ok = False
+        msg = f"Unexpected error while closing booking: {e}"
+
+    status = "success" if ok else "error"
+    return Response(
+        json.dumps({"status": status, "message": msg}),
+        status=200,
+        mimetype="application/json",
+    )
 
 
 # ===================== MAIN =====================
