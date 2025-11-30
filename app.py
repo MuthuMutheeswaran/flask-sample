@@ -763,8 +763,15 @@ def close_booking_in_sheets(booking_id: str) -> (bool, str):
     Returns (success_flag, message)
     """
     booking_id = (booking_id or "").strip()
+
+    # 🔹 Extra safety: if label like "🗂 Close Booking: A2M-G-20251130154612"
+    #    comes in, keep only the part after the last ':'.
+    if ":" in booking_id:
+        booking_id = booking_id.split(":")[-1].strip()
+
     if not booking_id:
         return False, "Booking ID required"
+
 
     client = get_gspread_client()
     sh = client.open_by_key(GOOGLE_SHEET_ID)
