@@ -14,6 +14,15 @@ from psycopg2.extras import RealDictCursor
 app = Flask(__name__)
 OTP_TTL_SECONDS = 5 * 60  # 5 minutes
 
+# ---- DB init at startup (Flask 3 safe) ----
+try:
+    init_db()
+    print("✅ DB initialized (uploaded_images table ready).")
+except Exception as e:
+    print("❌ DB INIT ERROR:", e)
+
+
+
 # In-memory store: { email_lower: { "otp": "123456", "expires_at": 1234567890 } }
 otp_store = {}
 
@@ -140,14 +149,6 @@ def find_trip_plan(start, travel, days, budget):
 @app.route("/", methods=["GET"])
 def home():
     return Response("Trip Planner API is running ✅", mimetype="text/plain")
-
-
-@app.before_first_request
-def setup():
-    try:
-        init_db()
-    except Exception as e:
-        print("DB INIT ERROR:", e)
 
 
 # ===================== GEMINI HELPERS =====================
