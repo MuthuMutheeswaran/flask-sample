@@ -1095,6 +1095,36 @@ def api_upload_image():
         mimetype="application/json",
     )
 
+@app.route("/featured-packages", methods=["GET","POST"])
+def featured_packages_route():
+    """
+    Return featured packages (Goa, Manali, etc.) with image URLs.
+    These image_url values can be /image/<id> from your Postgres table.
+    """
+    # TODO: real image IDs use panra id replace pannu
+    goa_img_url = "https://apia2m.onrender.com/image/1"      # example
+    manali_img_url = "https://apia2m.onrender.com/image/2"   # example
+
+    packages = [
+        {
+            "id": "goa_pkg",
+            "name": "Goa Beach Escape – 3D/2N",
+            "price_text": "₹7,499 per person",
+            "image_url": goa_img_url,
+            "btn_label": "View Goa Plan",
+            "btn_payload": "Goa Package",
+        },
+        {
+            "id": "manali_pkg",
+            "name": "Manali Snow Adventure – 5D/4N",
+            "price_text": "₹12,999 per person",
+            "image_url": manali_img_url,
+            "btn_label": "View Manali Plan",
+            "btn_payload": "Manali Package",
+        },
+    ]
+
+    return Response(json.dumps(packages), status=200, mimetype="application/json")
 
 # ===================== MAIN =====================
 
