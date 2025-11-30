@@ -1,6 +1,7 @@
 from flask import Flask, request, Response
 import os
 import requests
+from app import app
 import time
 import json
 import random 
