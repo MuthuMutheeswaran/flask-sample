@@ -8,42 +8,14 @@ import random
 import gspread
 from google.oauth2.service_account import Credentials
 
-import psycopg2
-from psycopg2.extras import RealDictCursor
-def get_db_conn():
-    if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL not configured")
-    return psycopg2.connect(DATABASE_URL)
+import psycopg2  # RealDictCursor venam, comment/delete
 
-def init_db():
-    conn = get_db_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS uploaded_images (
-            id SERIAL PRIMARY KEY,
-            filename TEXT NOT NULL,
-            content_type TEXT NOT NULL,
-            data BYTEA NOT NULL,
-            created_at TIMESTAMPTZ DEFAULT NOW()
-        );
-    """)
-    conn.commit()
-    cur.close()
-    conn.close()
 app = Flask(__name__)
 OTP_TTL_SECONDS = 5 * 60  # 5 minutes
 
-# ---- DB init at startup (Flask 3 safe) ----
-try:
-    init_db()
-    print("✅ DB initialized (uploaded_images table ready).")
-except Exception as e:
-    print("❌ DB INIT ERROR:", e)
-
-
-
 # In-memory store: { email_lower: { "otp": "123456", "expires_at": 1234567890 } }
 otp_store = {}
+
 
 # ===================== GEMINI CONFIG =====================
 
@@ -116,6 +88,12 @@ def init_db():
     cur.close()
     conn.close()
 
+# ---- DB init at startup (Flask 3 safe) ----
+try:
+    init_db()
+    print("✅ DB initialized (uploaded_images table ready).")
+except Exception as e:
+    print("❌ DB INIT ERROR:", e)
 
 # ===================== TRIP PLAN SHEET HELPERS =====================
 
