@@ -1102,8 +1102,8 @@ def featured_packages_route():
     These image_url values can be /image/<id> from your Postgres table.
     """
     # TODO: real image IDs use panra id replace pannu
-    goa_img_url = "https://apia2m.onrender.com/image/1"      # example
-    manali_img_url = "https://apia2m.onrender.com/image/2"   # example
+    goa_img_url = "https://apia2m.onrender.com/image/3"      # example
+    manali_img_url = "https://apia2m.onrender.com/image/4"   # example
 
     packages = [
         {
