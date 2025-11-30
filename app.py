@@ -8,6 +8,9 @@ import random
 import gspread
 from google.oauth2.service_account import Credentials
 
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
 app = Flask(__name__)
 OTP_TTL_SECONDS = 5 * 60  # 5 minutes
 
@@ -51,6 +54,42 @@ def get_gspread_client():
     return client
 
 
+# ===================== POSTGRES CONFIG (for images) =====================
+
+DATABASE_URL = os.environ.get("DATABASE_URL")  # Render Postgres URL
+
+
+def get_db_conn():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL not configured")
+    conn = psycopg2.connect(DATABASE_URL)
+    return conn
+
+
+def init_db():
+    """
+    Create table for storing images if not exists.
+    Run once at startup.
+    """
+    conn = get_db_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS uploaded_images (
+            id SERIAL PRIMARY KEY,
+            filename TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            data BYTEA NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        """
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+# ===================== TRIP PLAN SHEET HELPERS =====================
 
 def find_trip_plan(start, travel, days, budget):
     """
@@ -101,6 +140,14 @@ def find_trip_plan(start, travel, days, budget):
 @app.route("/", methods=["GET"])
 def home():
     return Response("Trip Planner API is running ✅", mimetype="text/plain")
+
+
+@app.before_first_request
+def setup():
+    try:
+        init_db()
+    except Exception as e:
+        print("DB INIT ERROR:", e)
 
 
 # ===================== GEMINI HELPERS =====================
@@ -210,7 +257,7 @@ def trip_plan():
     except Exception:
         days = 0
 
-        # --------- Budget support for both range string & numeric ---------
+    # --------- Budget support for both range string & numeric ---------
     raw_budget = data.get("budget", "").strip()
 
     # "3000 - 6000" , "3000-6000" , "₹3000 – ₹6000" support
@@ -230,7 +277,6 @@ def trip_plan():
             budget = float(raw_budget)
         except:
             budget = 0
-
 
     # ---------- MODE CHECK ----------
     if mode != "TRIP_PLAN":
@@ -441,6 +487,7 @@ def get_trip_plan_route():
 
     return Response(plan_text, status=200, mimetype="text/plain")
 
+
 # ===================== /get-bookings (Bookings for My Packages) =====================
 
 @app.route("/get-bookings", methods=["GET", "POST"])
@@ -501,6 +548,7 @@ def get_bookings_route():
 
     resp = {"bookings": bookings}
     return Response(json.dumps(resp), status=200, mimetype="application/json")
+
 
 def get_bookings_for_email(email: str):
     """
@@ -595,7 +643,7 @@ def get_bookings_for_email(email: str):
 
         bookings.append({
             "package": pkg_title or "Your Package",
-            "booking_id": booking_id,   # 👉 now correct: A2M-G-...
+            "booking_id": booking_id,
             "place": place,
             "travel_date": travel_date,
             "members": members,
@@ -603,6 +651,7 @@ def get_bookings_for_email(email: str):
         })
 
     return bookings
+
 
 # ===================== OTP HELPERS =====================
 
@@ -667,6 +716,8 @@ def verify_otp_for_email(email: str, otp: str) -> bool:
     # OTP valid → one-time use: delete entry
     otp_store.pop(email_key, None)
     return True
+
+
 # ===================== /generate-otp =====================
 
 @app.route("/generate-otp", methods=["GET", "POST"])
@@ -711,6 +762,8 @@ def generate_otp_route():
 
     resp = {"status": "success", "otp": otp}
     return Response(json.dumps(resp), status=200, mimetype="application/json")
+
+
 # ===================== /verify-otp =====================
 
 @app.route("/verify-otp", methods=["GET", "POST"])
@@ -736,7 +789,6 @@ def verify_otp_route():
             mimetype="application/json",
         )
 
-
     email = (data.get("email") or "").strip()
     otp = (data.get("otp") or "").strip()
 
@@ -755,6 +807,10 @@ def verify_otp_route():
         resp = {"status": "failed"}
 
     return Response(json.dumps(resp), status=200, mimetype="application/json")
+
+
+# ===================== CLOSE BOOKING HELPERS =====================
+
 def close_booking_in_sheets(booking_id: str) -> (bool, str):
     """
     Move booking row from 'Bookings' sheet to 'ClosedBookings' sheet
@@ -764,14 +820,13 @@ def close_booking_in_sheets(booking_id: str) -> (bool, str):
     """
     booking_id = (booking_id or "").strip()
 
-    # 🔹 Extra safety: if label like "🗂 Close Booking: A2M-G-20251130154612"
-    #    comes in, keep only the part after the last ':'.
+    # Extra safety: if label like "🗂 Close Booking: A2M-G-20251130154612"
+    # comes in, keep only the part after the last ':'.
     if ":" in booking_id:
         booking_id = booking_id.split(":")[-1].strip()
 
     if not booking_id:
         return False, "Booking ID required"
-
 
     client = get_gspread_client()
     sh = client.open_by_key(GOOGLE_SHEET_ID)
@@ -831,6 +886,10 @@ def close_booking_in_sheets(booking_id: str) -> (bool, str):
         return False, f"Error while moving booking: {e}"
 
     return True, f"Booking closed and moved: {booking_id}"
+
+
+# ===================== /close-booking (JSON API) =====================
+
 @app.route("/close-booking", methods=["GET", "POST"])
 def close_booking_route():
     """
@@ -880,6 +939,160 @@ def close_booking_route():
     status = "success" if ok else "error"
     return Response(
         json.dumps({"status": status, "message": msg}),
+        status=200,
+        mimetype="application/json",
+    )
+
+
+# ===================== IMAGE UPLOAD HTML PAGE =====================
+
+@app.route("/upload-image", methods=["GET", "POST"])
+def upload_image():
+    if request.method == "GET":
+        # Simple HTML form
+        html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Upload Image</title>
+        </head>
+        <body>
+            <h2>Upload Image to PostgreSQL</h2>
+            <form method="POST" enctype="multipart/form-data">
+                <label>Select Image:</label><br/>
+                <input type="file" name="image"/><br/><br/>
+                <button type="submit">Upload</button>
+            </form>
+        </body>
+        </html>
+        """
+        return Response(html, mimetype="text/html")
+
+    # POST – handle upload
+    file = request.files.get("image")
+    if not file or file.filename == "":
+        return Response("No file selected", status=400, mimetype="text/plain")
+
+    filename = file.filename
+    content_type = file.mimetype or "application/octet-stream"
+    data = file.read()
+
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO uploaded_images (filename, content_type, data)
+            VALUES (%s, %s, %s)
+            RETURNING id;
+            """,
+            (filename, content_type, psycopg2.Binary(data)),
+        )
+        img_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print("IMAGE UPLOAD ERROR:", e)
+        return Response(f"Error saving image: {e}", status=500, mimetype="text/plain")
+
+    img_url = f"/image/{img_id}"
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><title>Upload Success</title></head>
+    <body>
+        <h2>Image Uploaded ✅</h2>
+        <p>ID: {img_id}</p>
+        <p>Filename: {filename}</p>
+        <p>View URL: <a href="{img_url}" target="_blank">{img_url}</a></p>
+        <img src="{img_url}" alt="Uploaded Image" style="max-width:400px;display:block;margin-top:20px;"/>
+    </body>
+    </html>
+    """
+    return Response(html, mimetype="text/html")
+
+
+# ===================== IMAGE FETCH ROUTE =====================
+
+@app.route("/image/<int:image_id>", methods=["GET","POST"])
+def get_image(image_id):
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT filename, content_type, data
+            FROM uploaded_images
+            WHERE id = %s;
+            """,
+            (image_id,),
+        )
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not row:
+            return Response("Image not found", status=404, mimetype="text/plain")
+
+        filename, content_type, data = row[0], row[1], row[2]
+        return Response(data, mimetype=content_type)
+    except Exception as e:
+        print("GET IMAGE ERROR:", e)
+        return Response(f"Error fetching image: {e}", status=500, mimetype="text/plain")
+
+
+# ===================== JSON IMAGE UPLOAD API =====================
+
+@app.route("/api/upload-image", methods=["POST","GET"])
+def api_upload_image():
+    file = request.files.get("image")
+    if not file or file.filename == "":
+        return Response(
+            json.dumps({"status": "error", "message": "No file uploaded"}),
+            status=400,
+            mimetype="application/json",
+        )
+
+    filename = file.filename
+    content_type = file.mimetype or "application/octet-stream"
+    data = file.read()
+
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO uploaded_images (filename, content_type, data)
+            VALUES (%s, %s, %s)
+            RETURNING id;
+            """,
+            (filename, content_type, psycopg2.Binary(data)),
+        )
+        img_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print("API IMAGE UPLOAD ERROR:", e)
+        return Response(
+            json.dumps({"status": "error", "message": str(e)}),
+            status=500,
+            mimetype="application/json",
+        )
+
+    img_url = f"/image/{img_id}"
+
+    return Response(
+        json.dumps(
+            {
+                "status": "success",
+                "id": img_id,
+                "filename": filename,
+                "url": img_url,
+            }
+        ),
         status=200,
         mimetype="application/json",
     )
